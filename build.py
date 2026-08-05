@@ -64,10 +64,9 @@ def video_block(url):
     vid = yt_id(url)
     if not vid:
         return ""
-    src = f"https://www.youtube-nocookie.com/embed/{vid}?rel=0&amp;autoplay=1"
-    return (f'<div class="v-video"><iframe src="{src}" title="" '
-            'allow="autoplay; encrypted-media; picture-in-picture; fullscreen" '
-            'referrerpolicy="no-referrer" allowfullscreen></iframe></div>')
+    watch = f"https://www.youtube.com/watch?v={vid}"
+    return (f'<a class="btn v-link" href="{watch}" target="_blank" '
+            'rel="noopener noreferrer">Смотреть видео</a>')
 
 def build_vault_html():
     source = None

@@ -93,6 +93,14 @@
     text-decoration:underline;text-underline-offset:3px;transition:color .2s;
   }
   .link:hover{color:var(--blood);}
+  .v-link{
+    display:inline-block;padding:14px 28px;
+    color:var(--ink);text-decoration:none;
+    font-size:13px;letter-spacing:.18em;text-transform:uppercase;
+    background:#0a0a0a;border:1px solid var(--line);border-radius:3px;
+    transition:border-color .2s, color .2s;
+  }
+  .v-link:hover{color:#fff;border-color:var(--blood-soft);}
 
   .input:focus-visible,.btn:focus-visible,.link:focus-visible,.reveal:focus-visible{
     outline:1px solid var(--blood);outline-offset:2px;
@@ -213,17 +221,16 @@ function syncPw(){
 username.addEventListener('input', syncPw);
 syncPw();
 
-/* --- Видео на экране восстановления --- */
+/* --- Ссылка на видео (без встроенного плеера) --- */
 var recBox = document.getElementById('recVideo');
 function mountRec(){
   if (!RECOVERY_ID){
     recBox.innerHTML = '<p class="v-note">Видео не задано.</p>';
     return;
   }
-  recBox.innerHTML = '<div class="v-video"><iframe src="https://www.youtube-nocookie.com/embed/'
-    + RECOVERY_ID + '?rel=0&amp;autoplay=1" title="" '
-    + 'allow="autoplay; encrypted-media; picture-in-picture; fullscreen" '
-    + 'referrerpolicy="no-referrer" allowfullscreen></iframe></div>';
+  var url = 'https://www.youtube.com/watch?v=' + RECOVERY_ID;
+  recBox.innerHTML = '<a class="v-link" href="' + url + '" '
+    + 'target="_blank" rel="noopener noreferrer">Смотреть видео</a>';
 }
 function unmountRec(){ recBox.innerHTML = ''; }
 
