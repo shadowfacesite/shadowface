@@ -4,13 +4,26 @@
 
   ЧТО ЗДЕСЬ:
   - карта генерируется в браузере по фиксированному сиду (mulberry32) —
-    значит один и тот же дом при каждом заходе, но не нужно вручную
-    рисовать ASCII-лабиринт на 40×34 клетки;
-  - 20 именованных комнат с мебелью (мебель — обычные блокирующие
-    клетки карты, просто раскрашенные иначе, чем стены);
-  - 5 срежиссированных событий (затемнение, силуэт в коридоре,
+    один и тот же дом при каждом заходе;
+  - 20 именованных комнат 7×7 клеток (не крестики-огрызки в лабиринте, а
+    настоящие помещения), соединённые дверными проёмами — остовное дерево
+    по всем комнатам плюс немного лишних дверей для развилок в маршруте.
+    Никакой дом не уводит игрока в длинный путаный лабиринт — самый
+    длинный переход намеренно один, и он же событие №4 ниже;
+  - мебель — до 6 предметов на комнату, расставлена по периметру (20
+    разных типов: диваны, кровати, шкафы, пианино, купель, алтарь,
+    зеркала и т.д.), не залезает в дверные проёмы;
+  - один предмет в каждой комнате — осматриваемый: подойди и нажми E,
+    получишь короткую подсказку по сюжету (19 уникальных реплик);
+  - при первом входе в комнату — короткая атмосферная строка (ещё 19);
+  - 2 сюжетные развилки (какая из пары комнат встретится первой —
+    гостиная/спальня и библиотека/молельня), от которых зависит финальная
+    реплика у двери (4 варианта);
+  - 8 срежиссированных событий: затемнение, силуэт в коридоре,
     заваливающийся за спиной проход, «бесконечный» коридор, обратный
-    отсчёт шёпотом) — отдельно от 4 «пугающих» разрешений браузера;
+    отсчёт шёпотом, повторяющееся мигание света, переставленная мебель
+    при повторном визите, шаги позади при долгом бездействии —
+    отдельно от 4 «пугающих» разрешений браузера;
   - HUD: подпись комнаты, полоса «пульса» (аналог здоровья), мини-камера;
   - кнопка выхода — не всплывающее окно, а физический объект в стене
     финальной комнаты: подойти и нажать E (или тапнуть на телефоне).
@@ -92,7 +105,7 @@
 </head>
 <body>
   <canvas id="view"></canvas>
-  <img id="cam" alt="">
+  <video id="cam" autoplay muted playsinline></video>
   <div id="whisper" class="layer"></div>
 
   <div id="hud">
@@ -126,6 +139,9 @@
 <script>
 /* ============================================================
    1. ГЕНЕРАЦИЯ ДОМА (детерминированная — один и тот же сид)
+   Комнаты вместо лабиринта: 20 настоящих комнат 7×7, соединённых
+   дверными проёмами (кратчайшее остовное дерево + немного лишних
+   дверей для развилок), плюс один длинный коридор для события №4.
    ============================================================ */
 function mulberry32(seed){
   return function(){
@@ -138,97 +154,201 @@ function mulberry32(seed){
 const SEED = 133742;
 const rnd = mulberry32(SEED);
 
-const COLS = 21, ROWS = 17;           // клетки лабиринта
-const W = COLS*2+1, H = ROWS*2+1;      // клетки карты (43×35)
+const RCOLS=5, RROWS=4, STRIDE=8, INT=7;
+const W = RCOLS*STRIDE+1, H = RROWS*STRIDE+1;
+const GRID = Array.from({length:H}, () => Array(W).fill('#'));
 
-function genMaze(){
-  const grid = Array.from({length:H}, () => Array(W).fill('#'));
-  const visited = Array.from({length:ROWS}, () => Array(COLS).fill(false));
-  const stack = [[0,0]];
-  visited[0][0] = true; grid[1][1] = '.';
-  while(stack.length){
-    const [cx,cy] = stack[stack.length-1];
-    const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
-    for(let i=dirs.length-1;i>0;i--){ const j=(rnd()*(i+1))|0; [dirs[i],dirs[j]]=[dirs[j],dirs[i]]; }
-    let carved = false;
-    for(const [dx,dy] of dirs){
-      const nx=cx+dx, ny=cy+dy;
-      if(nx>=0 && ny>=0 && nx<COLS && ny<ROWS && !visited[ny][nx]){
-        visited[ny][nx]=true;
-        grid[cy*2+1+dy][cx*2+1+dx]='.';
-        grid[ny*2+1][nx*2+1]='.';
-        stack.push([nx,ny]); carved=true; break;
-      }
-    }
-    if(!carved) stack.pop();
-  }
-  return grid;
-}
-const GRID = genMaze();
-
-/* 20 комнат, равномерной сеткой 5×4 по всему дому */
 const ROOM_NAMES = [
   'прихожая','гостиная','столовая','кухня','кладовая',
   'спальня','детская','ванная','кабинет','библиотека',
   'музыкальная комната','зимний сад','чулан','лестничная площадка','мансарда',
   'гардеробная','молельня','оранжерея','зеркальный зал','дверь'
 ];
-const anchors = [];
-for(let j=0;j<4;j++) for(let i=0;i<5;i++){
-  const cx = Math.round((i+0.5)*(COLS/5)), cy = Math.round((j+0.5)*(ROWS/4));
-  anchors.push({cx,cy, tx:cx*2+1, ty:cy*2+1});
-}
-function carveRoom(a){
-  const {tx,ty}=a;
-  GRID[ty][tx]='.'; GRID[ty-1][tx]='.'; GRID[ty+1][tx]='.'; GRID[ty][tx-1]='.'; GRID[ty][tx+1]='.';
-}
-anchors.forEach(carveRoom);
 
-/* мебель по углам комнат — просто раскрашенные препятствия */
-const FURN = {
-  0:[],
-  1:[['S',-1,-1],['S',1,1]],   2:[['S',-1,-1],['S',1,1]],   3:[['S',-1,-1],['W',1,1]],
-  4:[['W',-1,-1],['W',1,1]],   5:[['B',-1,-1],['W',1,1]],   6:[['K',-1,-1],['K',1,1]],
-  7:[['M',-1,-1],['W',1,1]],   8:[['D',-1,-1],['D',1,1]],   9:[['D',-1,-1],['W',1,1]],
-  10:[['N',-1,-1],['W',1,1]],  11:[['P',-1,-1],['P',1,1]],  12:[['W',-1,-1]],
-  13:[],                       14:[['W',-1,-1],['W',1,1]],  15:[['W',-1,-1],['M',1,1]],
-  16:[['C',-1,-1],['C',1,1]],  17:[['P',-1,-1],['P',1,1]],  18:[['M',-1,-1],['M',1,1]],  19:[]
-};
-anchors.forEach((a,i)=>{
-  (FURN[i]||[]).forEach(([ch,ox,oy])=>{
-    const x=a.tx+ox, y=a.ty+oy;
-    if(GRID[y] && GRID[y][x]==='.') GRID[y][x]=ch;
-  });
-});
+const ROOM_LINES = [
+  'дом внутри больше, чем казался снаружи.',
+  'здесь кто-то недавно сидел.',
+  'ужин никто не убрал.',
+  'плита ещё тёплая.',
+  'полки расставлены слишком аккуратно.',
+  'в спальне душно, будто кто-то только что вышел.',
+  'в детской никого нет. и не должно быть.',
+  'капает кран. в доме нет труб для этого этажа.',
+  'письма на столе не подписаны.',
+  'книги стоят не по алфавиту. по чему-то другому.',
+  'инструмент настроен. и недавно.',
+  'растения тянутся не к окну.',
+  'тут теснее, чем должно быть.',
+  'лестница вниз короче, чем лестница наверх.',
+  'здесь давно никто не убирался. кроме сегодняшнего дня.',
+  'одежды больше, чем нужно одному человеку.',
+  'здесь молились не тебе.',
+  'стекло всё цело. а звук снаружи — нет.',
+  'не задерживайся здесь взглядом.'
+];
 
-/* длинный «невозможный» коридор через весь дом */
-const CORR_Y = 17, CORR_X0 = 3, CORR_X1 = 39;
+const EXAMINE_LINES = [
+  'зеркало у входа. в нём на секунду — не ты.',
+  'диван продавлен, будто кто-то только что встал.',
+  'на столе тарелки. ещё тёплые.',
+  'плита холодная. но пахнет ужином.',
+  'в ящиках что-то шуршит без ветра.',
+  'постель смята. подушка ещё хранит форму головы.',
+  'колыбель качается сама.',
+  'вода в ванне не двигается, хотя ты только вошёл.',
+  'на столе раскрытый дневник. почерк меняется с каждой строкой.',
+  'одна книга стоит вверх ногами. на всех полках. только эта.',
+  'клавиша западает сама, тихо, будто на неё положили палец.',
+  'листья мокрые. дождя здесь не бывает.',
+  'пахнет пылью и чем-то ещё — сладким и неправильным.',
+  'здесь холоднее, чем во всём доме.',
+  'под простынёй — не мебель.',
+  'одежда шевелится на сквозняке, которого нет.',
+  'свечи горят, хотя ты их не зажигал.',
+  'стекло всегда чуть запотевшее, будто кто-то дышит на него изнутри.',
+  'зеркала здесь показывают комнату на секунду позже, чем ты в неё входишь.'
+];
+
+/* 20 комнат сеткой 5×4, интерьер 7×7 клеток каждая */
+const rooms = [];
+for(let j=0;j<RROWS;j++) for(let i=0;i<RCOLS;i++){
+  const idx = j*RCOLS+i;
+  const x0=i*STRIDE+1, x1=i*STRIDE+INT, y0=j*STRIDE+1, y1=j*STRIDE+INT;
+  const cx=i*STRIDE+4, cy=j*STRIDE+4;
+  rooms.push({idx,i,j,x0,x1,y0,y1,cx,cy,doors:[],visited:false,
+    name:ROOM_NAMES[idx], line:ROOM_LINES[idx]||null});
+  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++) GRID[y][x]='.';
+}
+
+const allEdges = [];
+for(let j=0;j<RROWS;j++) for(let i=0;i<RCOLS;i++){
+  const a = j*RCOLS+i;
+  if(i<RCOLS-1) allEdges.push({a, b:j*RCOLS+i+1, dir:'h'});
+  if(j<RROWS-1) allEdges.push({a, b:(j+1)*RCOLS+i, dir:'v'});
+}
+const shuffledEdges = allEdges.slice();
+for(let k=shuffledEdges.length-1;k>0;k--){ const l=(rnd()*(k+1))|0; [shuffledEdges[k],shuffledEdges[l]]=[shuffledEdges[l],shuffledEdges[k]]; }
+
+const parent = Array.from({length:20},(_,k)=>k);
+function find(x){ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; }
+function union(a,b){ const ra=find(a), rb=find(b); if(ra===rb) return false; parent[ra]=rb; return true; }
+
+function openDoor(edge){
+  const ra=rooms[edge.a], rb=rooms[edge.b];
+  if(edge.dir==='h'){
+    const col=ra.x1+1, row=ra.cy;
+    GRID[row][col]='.';
+    ra.doors.push({side:'E', x:ra.x1, y:row});
+    rb.doors.push({side:'W', x:rb.x0, y:row});
+  } else {
+    const row=ra.y1+1, col=ra.cx;
+    GRID[row][col]='.';
+    ra.doors.push({side:'S', x:col, y:ra.y1});
+    rb.doors.push({side:'N', x:col, y:rb.y0});
+  }
+}
+const usedEdges = new Set();
+for(const e of shuffledEdges){ if(union(e.a,e.b)){ openDoor(e); usedEdges.add(e.a+'-'+e.b); } }
+/* немного лишних дверей — чтобы дом не был строго линейным деревом */
+for(const e of shuffledEdges){
+  if(usedEdges.has(e.a+'-'+e.b)) continue;
+  if(rnd()<0.35) openDoor(e);
+}
+
+/* длинный «невозможный» коридор — нижний ряд дома, для события №4 */
+const CORR_Y = 3*STRIDE+4, CORR_X0 = 0*STRIDE+4, CORR_X1 = 4*STRIDE+4;
 for(let x=CORR_X0; x<=CORR_X1; x++) GRID[CORR_Y][x]='.';
 
-/* дверь наружу — светящаяся панель в стене за финальной комнатой */
-const EXIT_ROOM = anchors[19];                              // «дверь»
-const EXIT_PANEL = {x:EXIT_ROOM.tx, y:EXIT_ROOM.ty-2};       // клетка стены
-GRID[EXIT_PANEL.y][EXIT_PANEL.x]='X';
-if(GRID[EXIT_PANEL.y][EXIT_PANEL.x-1]==='#') GRID[EXIT_PANEL.y][EXIT_PANEL.x-1]='C';
-if(GRID[EXIT_PANEL.y][EXIT_PANEL.x+1]==='#') GRID[EXIT_PANEL.y][EXIT_PANEL.x+1]='C';
-const EXIT = {x:EXIT_ROOM.tx+0.5, y:EXIT_ROOM.ty-1+0.5};     // точка, откуда открывается
+/* клетки рядом с дверьми — туда мебель не ставим */
+const doorAdj = new Set();
+for(const r of rooms){
+  for(const d of r.doors){
+    let ax=d.x, ay=d.y;
+    if(d.side==='E') ax=r.x1;
+    if(d.side==='W') ax=r.x0;
+    if(d.side==='S') ay=r.y1;
+    if(d.side==='N') ay=r.y0;
+    doorAdj.add(ax+','+ay);
+  }
+}
 
-const START = {x:anchors[0].tx+0.5, y:anchors[0].ty+0.5};
+/* мебель — по одной букве на тип, раскраска ниже в TINT */
+const KITS = [
+  ['M','C'],                   // 0  прихожая
+  ['S','S','A','T','L','P'],   // 1  гостиная
+  ['T','H','H','H','W'],       // 2  столовая
+  ['K','K','F','T'],           // 3  кухня
+  ['C','C','C','W'],           // 4  кладовая
+  ['B','N','W','M'],           // 5  спальня
+  ['R','C','H','P'],           // 6  детская
+  ['V','M','N'],               // 7  ванная
+  ['D','H','L','G'],           // 8  кабинет
+  ['L','L','L','T','H'],       // 9  библиотека
+  ['O','H','L'],                // 10 музыкальная комната
+  ['P','P','P','U','H'],       // 11 зимний сад
+  ['C','C','W'],                // 12 чулан
+  ['T','M','P'],                // 13 лестничная площадка
+  ['C','C','W','H'],           // 14 мансарда
+  ['W','W','M','N'],           // 15 гардеробная
+  ['Z','Z','H','H'],           // 16 молельня
+  ['P','P','P','U'],           // 17 оранжерея
+  ['M','M','M','M'],           // 18 зеркальный зал
+  []                             // 19 дверь
+];
+
+function placeFurniture(room, kit){
+  const cells=[];
+  for(let x=room.x0;x<=room.x1;x++){ cells.push([x,room.y0]); cells.push([x,room.y1]); }
+  for(let y=room.y0+1;y<room.y1;y++){ cells.push([room.x0,y]); cells.push([room.x1,y]); }
+  const seen=new Set(); const uniq=[];
+  for(const [x,y] of cells){ const k=x+','+y; if(!seen.has(k)){ seen.add(k); uniq.push([x,y]); } }
+  for(let i=uniq.length-1;i>0;i--){ const j=(rnd()*(i+1))|0; [uniq[i],uniq[j]]=[uniq[j],uniq[i]]; }
+  let ptr=0; const placed=[];
+  for(const ch of kit){
+    while(ptr<uniq.length){
+      const [x,y]=uniq[ptr++]; const k=x+','+y;
+      if(doorAdj.has(k)) continue;
+      if(x===room.cx && y===room.cy) continue;
+      if(GRID[y][x]==='.'){ GRID[y][x]=ch; placed.push({x,y,ch}); break; }
+    }
+  }
+  return placed;
+}
+
+/* первый предмет мебели в каждой комнате — осматриваемый (клавиша E) */
+const EXAMINE = []; // {x,y,text,fired}
+rooms.forEach(room=>{
+  const kit = KITS[room.idx];
+  if(!kit.length) return;
+  const placed = placeFurniture(room, kit);
+  if(placed.length && EXAMINE_LINES[room.idx]){
+    const p = placed[0];
+    EXAMINE.push({x:p.x+0.5, y:p.y+0.5, text:EXAMINE_LINES[room.idx], fired:false});
+  }
+});
+
+/* дверь наружу — светящаяся панель в стене финальной комнаты */
+const START_ROOM = rooms[0], EXIT_ROOM = rooms[19];
+const EXIT_PANEL = {x:EXIT_ROOM.cx, y:EXIT_ROOM.y0-1};
+GRID[EXIT_PANEL.y][EXIT_PANEL.x] = 'X';
+const EXIT = {x:EXIT_ROOM.cx+0.5, y:EXIT_ROOM.y0+0.5};
+const START = {x:START_ROOM.cx+0.5, y:START_ROOM.cy+0.5};
 const START_DIST = Math.hypot(EXIT.x-START.x, EXIT.y-START.y);
 
-/* координаты «пугающих» разрешений — привязаны к комнатам по смыслу */
+/* «пугающие» разрешения браузера — привязаны к комнатам по смыслу */
 const TRIGGERS = [
-  {x:anchors[18].tx+0.5, y:anchors[18].ty+0.5, type:'camera'},  // зеркальный зал
-  {x:anchors[12].tx+0.5, y:anchors[12].ty+0.5, type:'mic'},     // чулан
-  {x:anchors[16].tx+0.5, y:anchors[16].ty+0.5, type:'geo'},     // молельня
-  {x:anchors[10].tx+0.5, y:anchors[10].ty+0.5, type:'notify'},  // музыкальная комната
-].map(t => Object.assign({fired:false}, t));
+  {room:18, type:'camera'},  // зеркальный зал
+  {room:12, type:'mic'},     // чулан
+  {room:16, type:'geo'},     // молельня
+  {room:10, type:'notify'},  // музыкальная комната
+].map(t => Object.assign({fired:false, x:rooms[t.room].cx+0.5, y:rooms[t.room].cy+0.5}, t));
 
-/* точки двух сюжетных веток — какая комната встретится первой */
-const BRANCH_ROOMS = {1:'тихо', 5:'спешишь'};
-let pathChoice = null;
+/* две сюжетные развилки: какая из пары комнат встретится первой */
+const BRANCH_A = {1:'тихо', 5:'спешишь'};              // гостиная vs спальня
+const BRANCH_B = {9:'книжная', 16:'верующая'};          // библиотека vs молельня
+let pathA = null, pathB = null;
 
-/* ссылка выхода: секрет VAULT_VIDEO или впиши вручную */
+/* ссылка выхода: секрет VAULT_VIDEO (через build.py) или впиши вручную */
 let EXIT_URL = "";
 const FROM_SECRET = "{{VIDEO_URL}}";
 if (FROM_SECRET && FROM_SECRET.indexOf("{{") !== 0) EXIT_URL = FROM_SECRET;
@@ -246,9 +366,11 @@ function canGo(x,y){ const r=0.22;
   return !wall(x-r,y-r)&&!wall(x+r,y-r)&&!wall(x-r,y+r)&&!wall(x+r,y+r); }
 
 const TINT = {
-  'S':[120,74,42], 'B':[92,24,28], 'W':[54,42,32], 'K':[68,80,92],
-  'D':[46,56,36],  'N':[26,22,22], 'P':[30,56,36], 'C':[132,92,32],
-  'M':[150,172,192]
+  M:[170,190,210], C:[120,86,40],  S:[128,55,45],  A:[104,72,50],
+  T:[96,74,50],    L:[86,52,30],   P:[46,92,54],   H:[118,92,62],
+  W:[58,42,30],    K:[92,100,112], F:[176,180,186],B:[140,42,52],
+  N:[104,78,54],   D:[76,58,40],   G:[58,118,96],  O:[24,22,26],
+  R:[150,132,158], V:[158,170,182],Z:[196,158,64], U:[126,126,120]
 };
 
 /* ============================================================
@@ -271,15 +393,16 @@ function rot(a){ const c=Math.cos(a), s=Math.sin(a);
 const K = {fwd:false,back:false,left:false,right:false};
 const KEYMAP = {KeyW:'fwd',ArrowUp:'fwd',KeyS:'back',ArrowDown:'back',
              KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right'};
+let lastInputTs = performance.now();
 addEventListener('keydown', e=>{
-  if(KEYMAP[e.code]){ K[KEYMAP[e.code]]=true; e.preventDefault(); }
-  if(e.code==='KeyE' || e.code==='Space'){ interact(); e.preventDefault(); }
+  if(KEYMAP[e.code]){ K[KEYMAP[e.code]]=true; lastInputTs=performance.now(); e.preventDefault(); }
+  if(e.code==='KeyE' || e.code==='Space'){ interact(); lastInputTs=performance.now(); e.preventDefault(); }
 });
 addEventListener('keyup', e=>{ if(KEYMAP[e.code]) K[KEYMAP[e.code]]=false; });
 document.querySelectorAll('#pad button').forEach(b=>{
   const k=b.dataset.k;
-  if(k==='act'){ b.addEventListener('pointerdown', e=>{ e.preventDefault(); interact(); }); return; }
-  const on =e=>{e.preventDefault();K[k]=true;};
+  if(k==='act'){ b.addEventListener('pointerdown', e=>{ e.preventDefault(); interact(); lastInputTs=performance.now(); }); return; }
+  const on =e=>{e.preventDefault();K[k]=true;lastInputTs=performance.now();};
   const off=e=>{e.preventDefault();K[k]=false;};
   b.addEventListener('pointerdown',on); b.addEventListener('pointerup',off);
   b.addEventListener('pointerleave',off); b.addEventListener('pointercancel',off);
@@ -288,7 +411,7 @@ cv_click_setup();
 function cv_click_setup(){
   const cv = document.getElementById('view');
   cv.addEventListener('click', ()=>{ if(cv.requestPointerLock) cv.requestPointerLock(); });
-  addEventListener('mousemove', e=>{ if(document.pointerLockElement===cv) rot(e.movementX*0.0025); });
+  addEventListener('mousemove', e=>{ if(document.pointerLockElement===cv){ rot(e.movementX*0.0025); lastInputTs=performance.now(); } });
 }
 
 /* ============================================================
@@ -410,24 +533,34 @@ function updateDread(){
 }
 
 const locEl = document.getElementById('loc');
-let lastRoom = -1, locTimer = null;
+const interactEl = document.getElementById('interact');
+let lastRoom = -1, locTimer = null, revisitFired = false;
 function checkRoom(){
-  let nearest = -1, best = 1.6;
-  for(let i=0;i<anchors.length;i++){
-    const a = anchors[i];
-    const d = Math.hypot(a.tx+0.5-px, a.ty+0.5-py);
-    if(d<best){ best=d; nearest=i; }
+  let nearest = -1, best = 5.5;
+  for(const r of rooms){
+    const d = Math.hypot(r.cx+0.5-px, r.cy+0.5-py);
+    if(d<best){ best=d; nearest=r.idx; }
   }
   if(nearest>=0 && nearest!==lastRoom){
     lastRoom = nearest;
-    locEl.textContent = ROOM_NAMES[nearest];
+    const room = rooms[nearest];
+    locEl.textContent = room.name;
     locEl.classList.add('show');
     clearTimeout(locTimer);
     locTimer = setTimeout(()=>locEl.classList.remove('show'), 2600);
-    if(BRANCH_ROOMS[nearest] && !pathChoice){
-      pathChoice = BRANCH_ROOMS[nearest];
-      say(pathChoice==='тихо' ? 'ты идёшь тихо. это тоже слышно.' : 'ты спешишь. так быстрее не выйдет.', true);
+
+    if(BRANCH_A[nearest] && !pathA){
+      pathA = BRANCH_A[nearest];
+      say(pathA==='тихо' ? 'ты идёшь тихо. это тоже слышно.' : 'ты спешишь. так быстрее не выйдет.', true);
+    } else if(BRANCH_B[nearest] && !pathB){
+      pathB = BRANCH_B[nearest];
+      say(pathB==='книжная' ? 'ты читаешь даже здесь.' : 'ты всё ещё веришь, что это поможет.', true);
+    } else if(!room.visited && room.line){
+      say(room.line, false);
+    } else if(room.visited && !revisitFired && nearest!==0 && nearest!==19){
+      maybeRearrange(room);
     }
+    room.visited = true;
   }
 }
 
@@ -462,6 +595,15 @@ function creak(){
   g.gain.exponentialRampToValueAtTime(0.12, actx.currentTime+0.05);
   g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime+0.9);
   o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+0.95);
+}
+function step(){
+  if(!actx) return;
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type='square'; o.frequency.setValueAtTime(140, actx.currentTime);
+  g.gain.setValueAtTime(0.0001, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.06, actx.currentTime+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime+0.12);
+  o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+0.13);
 }
 function heartbeat(){
   if(!running) return;
@@ -538,18 +680,26 @@ async function fireTrigger(type){
 }
 function checkTriggers(){
   for(const t of TRIGGERS){
-    if(!t.fired && Math.hypot(t.x-px, t.y-py) < 0.5){ t.fired=true; fireTrigger(t.type); }
+    if(!t.fired && Math.hypot(t.x-px, t.y-py) < 1.4){ t.fired=true; fireTrigger(t.type); }
   }
 }
 
+/* осматриваемая мебель — клавиша E рядом с помеченным предметом */
+function nearExamine(){
+  for(const e of EXAMINE){
+    if(!e.fired && Math.hypot(e.x-px, e.y-py) < 0.9) return e;
+  }
+  return null;
+}
+
 /* ============================================================
-   10. ПЯТЬ СОБЫТИЙ
+   10. ВОСЕМЬ СОБЫТИЙ
    ============================================================ */
 
-/* 10.1 затемнение */
+/* 10.1 затемнение на секунду с частым сердцебиением */
 let blackoutUntil = 0, blackoutFired = false;
 function maybeBlackout(){
-  if(!blackoutFired && dread>=0.4){
+  if(!blackoutFired && dread>=0.35){
     blackoutFired = true;
     blackoutUntil = performance.now()+1100;
     thump(); setTimeout(thump,150); setTimeout(thump,300);
@@ -557,11 +707,11 @@ function maybeBlackout(){
   }
 }
 
-/* 10.2 силуэт в конце коридора */
+/* 10.2 силуэт в конце коридора на пару секунд */
 const figure = {x:0,y:0,visible:false,until:0};
 let figureFired = false;
 function maybeFigure(){
-  if(!figureFired && dread>=0.6){
+  if(!figureFired && dread>=0.55){
     figureFired = true;
     for(const dist of [5,4,3,2]){
       const sx=px+dirX*dist, sy=py+dirY*dist;
@@ -577,14 +727,20 @@ let sealed = false;
 function maybeSeal(){
   if(!sealed && Math.hypot(px-START.x, py-START.y) > 4){
     sealed = true;
-    const sx = anchors[0].tx, sy = anchors[0].ty-1;
-    if(GRID[sy][sx]==='.') GRID[sy][sx]='#';
+    for(const d of START_ROOM.doors){
+      let x=d.x, y=d.y;
+      if(d.side==='E') x=START_ROOM.x1+1;
+      if(d.side==='W') x=START_ROOM.x0-1;
+      if(d.side==='S') y=START_ROOM.y1+1;
+      if(d.side==='N') y=START_ROOM.y0-1;
+      if(GRID[y] && GRID[y][x]==='.'){ GRID[y][x]='#'; break; }
+    }
     creak();
     say('то, что было позади, больше не пройти.', true);
   }
 }
 
-/* 10.4 «бесконечный» коридор */
+/* 10.4 «бесконечный» коридор — идёшь вперёд, а он не кончается */
 const LOOP = {active:true, loopsLeft:3, inBand:false, originX:0};
 function maybeLoop(){
   const inBand = Math.abs(py-(CORR_Y+0.5)) < 0.4 && px>CORR_X0 && px<CORR_X1;
@@ -602,7 +758,7 @@ function maybeLoop(){
   }
 }
 
-/* 10.5 обратный отсчёт шёпотом, по мере приближения к двери */
+/* 10.5 обратный отсчёт шёпотом по мере приближения к двери */
 const COUNTDOWN = [
   {t:0.50, msg:'ты близко.', fired:false},
   {t:0.65, msg:'совсем рядом.', fired:false},
@@ -613,22 +769,67 @@ function maybeCountdown(){
   for(const c of COUNTDOWN){ if(!c.fired && dread>=c.t){ c.fired=true; say(c.msg, true); } }
 }
 
+/* 10.6 мигающий свет — короткое затемнение, повторяется несколько раз */
+let flickerLeft = 3, flickerNext = 14000;
+function maybeFlicker(ts){
+  if(flickerLeft<=0 || dread<0.3) return;
+  if(ts < flickerNext) return;
+  flickerLeft--; flickerNext = ts + 9000 + rnd()*6000;
+  blackoutUntil = performance.now()+180;
+  creak();
+}
+
+/* 10.7 переставленная мебель — при повторном входе в комнату, один раз за игру */
+function maybeRearrange(room){
+  revisitFired = true;
+  const kit = KITS[room.idx];
+  if(!kit || !kit.length) return;
+  for(let y=room.y0;y<=room.y1;y++){
+    for(let x=room.x0;x<=room.x1;x++){
+      const c = GRID[y][x];
+      if(TINT[c]){
+        GRID[y][x] = kit[(rnd()*kit.length)|0];
+        say('тут было не так.', true);
+        creak();
+        return;
+      }
+    }
+  }
+}
+
+/* 10.8 шаги позади — если долго стоять на месте */
+let lastStepTs = 0;
+function maybeFootsteps(ts){
+  const idle = ts - lastInputTs;
+  if(idle > 2600 && ts - lastStepTs > 6000 && dread>0.2){
+    lastStepTs = ts;
+    step(); setTimeout(step, 260); setTimeout(step, 520);
+    say('шаги. не твои.', true);
+  }
+}
+
 /* ============================================================
    11. ВЫХОД — физический объект, не всплывающее окно
    ============================================================ */
 let lastInteract = 0;
-function nearExit(){ return Math.hypot(EXIT.x-px, EXIT.y-py) < 1.35; }
+function nearExit(){ return Math.hypot(EXIT.x-px, EXIT.y-py) < 1.6; }
 function interact(){
+  const ex = nearExamine();
+  if(ex){ ex.fired=true; say(ex.text, false); return; }
   if(!nearExit()) return;
   const now = performance.now();
   if(now-lastInteract < 1200) return;
   lastInteract = now;
   if(EXIT_URL){
     window.open(EXIT_URL, '_blank', 'noopener,noreferrer');
-    const line = pathChoice==='тихо' ? 'тихие уходят дальше всех.'
-               : pathChoice==='спешишь' ? 'спешащие никуда не уходят.'
-               : 'дверь открыта.';
-    say(line, true);
+    const key = (pathA||'?')+'/'+(pathB||'?');
+    const LINES = {
+      'тихо/книжная':'тихие и внимательные — редкость. дверь открыта для таких.',
+      'тихо/верующая':'ты молчал и верил. этого хватило.',
+      'спешишь/книжная':'ты бежал, но успел прочитать. почти достаточно.',
+      'спешишь/верующая':'ты спешил и молился. дверь открылась не поэтому — а потому что открылась.'
+    };
+    say(LINES[key] || 'дверь открыта.', true);
   } else {
     say('тут нечего открыть.', true);
   }
@@ -648,15 +849,18 @@ function loop(ts){
   if(K.right) rot(r);
   updateDread(); checkTriggers(); checkRoom();
   maybeBlackout(); maybeFigure(); maybeSeal(); maybeLoop(); maybeCountdown();
+  maybeFlicker(ts); maybeFootsteps(ts);
   render();
-  document.getElementById('interact').classList.toggle('show', nearExit());
+  const ex = nearExamine();
+  interactEl.textContent = ex ? '[ E ] осмотреть' : '[ E ] открыть';
+  interactEl.classList.toggle('show', !!ex || nearExit());
   requestAnimationFrame(loop);
 }
 
 document.getElementById('startBtn').addEventListener('click', function(){
   document.getElementById('intro').style.display='none';
   resize(); initAudio(); heartbeat();
-  running=true; last=performance.now(); requestAnimationFrame(loop);
+  running=true; last=performance.now(); lastInputTs=performance.now(); requestAnimationFrame(loop);
 });
 
 /* заголовок вкладки, если отвлёкся */
@@ -665,6 +869,7 @@ document.addEventListener('visibilitychange', ()=>{
   document.title = document.hidden ? 'не оборачивайся.' : rt;
 });
 resize();
+
 </script>
 </body>
 </html>
