@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<!--
+  Фоновый звук: "Dark and Stormy" — Tabletop Audio (tabletopaudio.com)
+  Лицензия Creative Commons Attribution-NonCommercial-NoDerivatives 4.0.
+  Использование только некоммерческое, без изменений трека.
+-->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; font-src 'self' data: https:; frame-src 'self' blob: https:; child-src 'self' blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>вход</title>
+<style>
+  :root{
+    --bg:#000; --ink:#c9c9c9; --muted:#8a8a8a; --dim:#4a4a4a;
+    --field:#080808; --line:rgba(255,255,255,.07);
+    --blood:#b01414; --blood-soft:rgba(176,20,20,.45);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    min-height:100svh;display:grid;place-items:center;padding:24px;overflow:hidden;
+    background:var(--bg);color:var(--ink);
+    font-family:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Фон ---------- */
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none;transition:transform .5s ease;}
+  .bg__img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;transition:filter .5s ease;}
+  .bg__vignette{
+    position:absolute;inset:0;
+    background:
+      radial-gradient(ellipse 80% 70% at 50% 45%, transparent 20%, rgba(0,0,0,.55) 62%, #000 100%),
+      linear-gradient(#000 0%, transparent 22% 78%, #000 100%);
+  }
+
+  /* ---------- Карточка ---------- */
+  .card{position:relative;z-index:1;display:grid;}
+  .face{grid-area:1/1;display:flex;justify-content:center;align-items:center;}
+  .panel{
+    display:flex;flex-direction:column;gap:16px;width:320px;padding:40px 34px;
+    background:rgba(3,3,3,.72);border:1px solid var(--line);border-radius:4px;
+    backdrop-filter:blur(2px);
+    box-shadow:0 40px 120px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .brand{font-size:22px;letter-spacing:.16em;text-transform:uppercase;}
+  .panel--wide{width:min(640px,92vw);}
+  .sub{margin:-6px 0 6px;font-size:11px;letter-spacing:.06em;color:var(--muted);line-height:1.5;}
+
+  /* ---------- Поля ---------- */
+  .field{position:relative;display:flex;flex-direction:column;gap:6px;}
+  .lbl{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-left:1px;}
+  .input{
+    width:100%;min-height:44px;padding:0 12px;color:var(--ink);
+    font-family:inherit;font-size:14px;letter-spacing:.05em;
+    background:var(--field);border:1px solid var(--line);border-radius:3px;outline:none;
+    transition:border-color .2s, opacity .2s;
+  }
+  .input::placeholder{color:var(--dim);}
+  .input:focus{border-color:var(--blood-soft);}
+  .input:disabled{opacity:.35;cursor:not-allowed;}
+  .field--pw .input{padding-right:46px;}
+
+  .reveal{
+    position:absolute;right:6px;bottom:5px;width:36px;height:34px;
+    display:grid;place-items:center;background:transparent;border:0;padding:0;cursor:pointer;
+    color:var(--dim);border-radius:3px;transition:color .2s, opacity .2s;
+  }
+  .reveal:hover:not(:disabled){color:var(--ink);}
+  .reveal:disabled{opacity:.25;cursor:not-allowed;}
+  .reveal svg{width:19px;height:19px;}
+  .reveal .icon-off{display:none;}
+  .reveal[aria-pressed="true"] .icon-on{display:none;}
+  .reveal[aria-pressed="true"] .icon-off{display:block;}
+
+  .err{min-height:14px;margin:-4px 0 0;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--blood);}
+
+  /* ---------- Кнопки ---------- */
+  .btn{
+    width:100%;padding:12px;margin-top:2px;color:var(--ink);
+    font-family:inherit;font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    background:#0a0a0a;border:1px solid var(--line);border-radius:3px;cursor:pointer;
+    transition:border-color .2s, color .2s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){color:#fff;border-color:var(--blood-soft);}
+  .btn:disabled{opacity:.5;cursor:default;}
+  .link{
+    align-self:center;margin-top:2px;background:transparent;border:0;padding:4px;cursor:pointer;
+    color:var(--muted);font-family:inherit;font-size:11px;letter-spacing:.1em;
+    text-decoration:underline;text-underline-offset:3px;transition:color .2s;
+  }
+  .link:hover{color:var(--blood);}
+
+  .input:focus-visible,.btn:focus-visible,.link:focus-visible,.reveal:focus-visible{
+    outline:1px solid var(--blood);outline-offset:2px;
+  }
+
+  /* ---------- Открытый экран: полноценный документ ---------- */
+  [hidden]{display:none !important;}
+  .vault{
+    position:fixed;inset:0;z-index:50;
+    width:100%;height:100%;border:0;background:#000;
+  }
+  .unlocked .bg,.unlocked .card{display:none;}
+  body.unlocked{overflow:hidden;}
+
+  /* ---------- Неверный вход ---------- */
+  .reject .bg{transform:scale(1.05);transition:transform .12s ease;}
+  .reject .bg__img{filter:brightness(3.6) contrast(1.05);transition:filter .12s ease;}
+
+  /* ---------- Свет гаснет ---------- */
+  .blk{position:fixed;inset:0;z-index:60;background:#000;opacity:0;pointer-events:none;}
+  .blk.run{animation:blackout 1s linear;}
+  @keyframes blackout{
+    0%{opacity:0;} 10%{opacity:1;} 45%{opacity:1;}
+    52%{opacity:.4;} 58%{opacity:1;} 100%{opacity:0;}
+  }
+  @keyframes blackoutSoft{0%{opacity:0;}20%{opacity:1;}55%{opacity:1;}100%{opacity:0;}}
+
+  @media (prefers-reduced-motion: reduce){
+    .bg,.bg__img,.input,.btn{transition:none;}
+    .reject .bg{transform:none;}
+    .blk.run{animation-name:blackoutSoft;}
+  }
+</style>
+</head>
+<body>
+
+  <audio id="amb" src="60_dark_and_stormy.mp3" loop preload="auto"></audio>
+  <div class="blk" id="blk" aria-hidden="true"></div>
+
+  <div class="bg" aria-hidden="true">
+    <img class="bg__img" src="bg.jpg" alt="">
+    <div class="bg__vignette"></div>
+  </div>
+
+  <main class="card" id="card">
+
+    <div class="face face--front">
+      <form class="panel" id="loginForm" novalidate autocomplete="off">
+        <div class="brand">вход</div>
+        <p class="sub">Я ближе — чем ты думаешь...</p>
+
+        <div class="field">
+          <label class="lbl" for="username">Логин</label>
+          <input id="username" class="input" type="text"
+                 autocomplete="off" spellcheck="false" autocapitalize="off" required>
+        </div>
+
+        <div class="field field--pw">
+          <label class="lbl" for="password">Пароль</label>
+          <input id="password" class="input" type="password" autocomplete="off" required disabled>
+          <button type="button" class="reveal" id="reveal" disabled
+                  aria-pressed="false" aria-controls="password"
+                  aria-label="Показать пароль" title="Показать пароль">
+            <svg class="icon-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-6.5 0-10-8-10-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="m3 3 18 18"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/></svg>
+          </button>
+        </div>
+
+        <p class="err" id="err" role="alert" aria-live="assertive"></p>
+
+        <button class="btn" type="submit" id="submitBtn">Войти</button>
+        <button class="link" type="button" data-flip="back">Забыли логин и пароль?</button>
+      </form>
+    </div>
+
+    <div class="face face--back" inert hidden>
+      <div class="panel panel--wide">
+        <div class="brand">восстановление</div>
+        <p class="sub">Помощь не придёт.</p>
+        <div id="recVideo"></div>
+        <button class="link" type="button" data-flip="front">Назад</button>
+      </div>
+    </div>
+
+  </main>
+
+  <iframe class="vault" id="vault" title="" hidden></iframe>
+
+<script>
+/* Подставляется сборкой из секретов. Здесь только шифроблок и id видео. */
+var VAULT = '__PAYLOAD__';
+var RECOVERY_ID = '__RECOVERY_ID__';
+var ITER = __ITER__;
+
+var card = document.getElementById('card');
+var front = card.querySelector('.face--front');
+var back  = card.querySelector('.face--back');
+var err = document.getElementById('err');
+var username = document.getElementById('username');
+var password = document.getElementById('password');
+var reveal   = document.getElementById('reveal');
+var submitBtn = document.getElementById('submitBtn');
+var vault = document.getElementById('vault');
+var blk   = document.getElementById('blk');
+var amb   = document.getElementById('amb');
+
+/* --- Пароль доступен только после ввода логина --- */
+function syncPw(){
+  var has = username.value.trim() !== '';
+  password.disabled = !has;
+  reveal.disabled = !has;
+  if (!has){
+    password.value = '';
+    password.type = 'password';
+    reveal.setAttribute('aria-pressed','false');
+  }
+}
+username.addEventListener('input', syncPw);
+syncPw();
+
+/* --- Видео на экране восстановления --- */
+var recBox = document.getElementById('recVideo');
+function mountRec(){
+  if (!RECOVERY_ID){
+    recBox.innerHTML = '<p class="v-note">Видео не задано.</p>';
+    return;
+  }
+  recBox.innerHTML = '<div class="v-video"><iframe src="https://www.youtube-nocookie.com/embed/'
+    + RECOVERY_ID + '?rel=0&amp;autoplay=1" title="" '
+    + 'allow="autoplay; encrypted-media; picture-in-picture; fullscreen" '
+    + 'referrerpolicy="no-referrer" allowfullscreen></iframe></div>';
+}
+function unmountRec(){ recBox.innerHTML = ''; }
+
+/* --- Переход к экрану восстановления --- */
+function toFace(showBack){
+  blk.classList.remove('run'); void blk.offsetWidth; blk.classList.add('run');
+  setTimeout(function(){
+    front.hidden = showBack;  front.inert = showBack;
+    back.hidden  = !showBack; back.inert  = !showBack;
+    if (showBack){ amb.pause(); mountRec(); }
+    else { unmountRec(); amb.play().catch(function(){}); }
+    var t = (showBack ? back : front).querySelector('input, .link');
+    if (t) t.focus({preventScroll:true});
+  }, 250);
+}
+blk.addEventListener('animationend', function(){ blk.classList.remove('run'); });
+card.querySelectorAll('[data-flip]').forEach(function(b){
+  b.addEventListener('click', function(){ toFace(b.dataset.flip === 'back'); });
+});
+
+/* --- Показать / скрыть пароль --- */
+reveal.addEventListener('click', function(){
+  var shown = password.type === 'text';
+  password.type = shown ? 'password' : 'text';
+  reveal.setAttribute('aria-pressed', String(!shown));
+  var label = shown ? 'Показать пароль' : 'Скрыть пароль';
+  reveal.setAttribute('aria-label', label);
+  reveal.title = label;
+});
+
+/* --- Отказ --- */
+function reject(msg){
+  err.textContent = msg;
+  document.body.classList.remove('reject');
+  void document.body.offsetWidth;
+  document.body.classList.add('reject');
+  setTimeout(function(){ document.body.classList.remove('reject'); }, 450);
+  password.select();
+}
+
+/* --- Криптография --- */
+function b64ToBytes(s){
+  var bin = atob(s), out = new Uint8Array(bin.length);
+  for (var i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function deriveKey(login, pass, salt){
+  var material = (login.trim().toLowerCase() + '\u0000' + pass).normalize('NFC');
+  var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(material),
+                                           'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt:salt, iterations:ITER, hash:'SHA-256'},
+    base, {name:'AES-GCM', length:256}, false, ['decrypt']);
+}
+
+/* --- Открытие экрана --- */
+function fadeOutAudio(){
+  var step = setInterval(function(){
+    if (amb.volume > 0.02){ amb.volume = Math.max(0, amb.volume - 0.02); }
+    else { amb.pause(); clearInterval(step); }
+  }, 60);
+}
+function openVault(html){
+  blk.classList.remove('run'); void blk.offsetWidth; blk.classList.add('run');
+  setTimeout(function(){
+    vault.srcdoc = html;          // внутри — полноценный документ, скрипты работают
+    document.body.classList.add('unlocked');
+    vault.hidden = false;
+    vault.focus();
+    fadeOutAudio();
+  }, 250);
+}
+
+/* --- Вход --- */
+var busy = false;
+document.getElementById('loginForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  if (busy) return;
+
+  if (!window.crypto || !crypto.subtle){
+    err.textContent = 'Нужен https или локальный файл.';
+    return;
+  }
+
+  busy = true;
+  submitBtn.disabled = true;
+  var old = submitBtn.textContent;
+  submitBtn.textContent = 'Проверяю…';
+  err.textContent = '';
+
+  try{
+    var raw = b64ToBytes(VAULT);
+    var key = await deriveKey(username.value, password.value, raw.slice(0,16));
+    var plain = await crypto.subtle.decrypt({name:'AES-GCM', iv: raw.slice(16,28)},
+                                            key, raw.slice(28));
+    openVault(new TextDecoder().decode(plain));
+  } catch(_){
+    reject('Тебя не ждали.');
+  } finally {
+    busy = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = old;
+  }
+});
+
+/* --- Фоновый звук --- */
+amb.volume = 0.2;
+function kick(){
+  amb.play().catch(function(){});
+  window.removeEventListener('pointerdown', kick);
+  window.removeEventListener('keydown', kick);
+}
+amb.play().catch(function(){
+  window.addEventListener('pointerdown', kick);
+  window.addEventListener('keydown', kick);
+});
+</script>
+</body>
+</html>
