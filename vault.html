@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!--
+  ЗАКРЫТАЯ СТРАНИЦА — то, что открывается после верного входа.
+
+  Это ПОЛНОЦЕННАЯ HTML-страница: свой <head>, свои стили и рабочие
+  скрипты. Пиши здесь что угодно, как в обычном html-файле.
+
+  Как пользоваться:
+    1. Скопируй этот файл в vault.html и правь его.
+    2. Проверяй локально:  python build.py  ->  открой _site/index.html
+    3. Для публикации скопируй всё содержимое vault.html
+       в секрет VAULT_HTML (Settings -> Secrets and variables -> Actions).
+
+  Файл vault.html занесён в .gitignore и на сайт не выкладывается —
+  сборщик шифрует его содержимое и вшивает в index.html шифроблоком.
+
+  Подстановки (необязательные):
+    {{VIDEO}} — плеер из секрета VAULT_VIDEO
+    {{TEXT}}  — текст из секрета VAULT_TEXT
+  Если прятать ссылку не нужно, вставь свой iframe прямо сюда.
+-->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>—</title>
+<style>
+  html,body{
+    margin:0; height:100%;
+    background:#000; color:#c9c9c9;
+    font-family:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+    -webkit-font-smoothing:antialiased;
+  }
+  body{display:grid; place-items:center; padding:24px;}
+  .wrap{
+    width:min(900px,100%);
+    display:flex; flex-direction:column; gap:22px;
+    align-items:center; text-align:center;
+  }
+  h1{
+    margin:0; font-size:22px; font-weight:600;
+    letter-spacing:.22em; text-transform:uppercase;
+  }
+  .note{
+    margin:0; font-size:12px; letter-spacing:.1em;
+    color:#8a8a8a; line-height:1.7;
+  }
+  .v-video{
+    width:100%; aspect-ratio:16/9;
+    background:#000; border:1px solid rgba(255,255,255,.07);
+  }
+  .v-video iframe{width:100%; height:100%; border:0; display:block;}
+  #timer{font-size:11px; letter-spacing:.24em; color:#b01414;}
+</style>
+</head>
+<body>
+
+  <div class="wrap">
+
+    <h1>Ты внутри</h1>
+
+    {{VIDEO}}
+
+    <p class="note">{{TEXT}}</p>
+
+    <p class="note" id="timer"></p>
+
+  </div>
+
+<script>
+  // Скрипты здесь работают — это настоящая страница, а не вставка.
+  var start = Date.now();
+  setInterval(function(){
+    var s = Math.floor((Date.now() - start) / 1000);
+    document.getElementById('timer').textContent = 'за тобой смотрят ' + s + ' сек';
+  }, 1000);
+</script>
+</body>
+</html>
