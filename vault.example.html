@@ -1,13 +1,26 @@
 <!DOCTYPE html>
 <!--
-  ЗАКРЫТАЯ СТРАНИЦА — 3D-лабиринт (стиль Doom), открывается после входа.
+  ЗАКРЫТАЯ СТРАНИЦА — 3D-дом с комнатами (стиль Doom/Wolfenstein), открывается после входа.
 
-  ССЫЛКА НА ВЫХОДЕ: задай секрет VAULT_VIDEO, либо впиши прямо сюда,
-  в кавычки EXIT_URL ниже.
+  ЧТО ЗДЕСЬ:
+  - карта генерируется в браузере по фиксированному сиду (mulberry32) —
+    значит один и тот же дом при каждом заходе, но не нужно вручную
+    рисовать ASCII-лабиринт на 40×34 клетки;
+  - 20 именованных комнат с мебелью (мебель — обычные блокирующие
+    клетки карты, просто раскрашенные иначе, чем стены);
+  - 5 срежиссированных событий (затемнение, силуэт в коридоре,
+    заваливающийся за спиной проход, «бесконечный» коридор, обратный
+    отсчёт шёпотом) — отдельно от 4 «пугающих» разрешений браузера;
+  - HUD: подпись комнаты, полоса «пульса» (аналог здоровья), мини-камера;
+  - кнопка выхода — не всплывающее окно, а физический объект в стене
+    финальной комнаты: подойти и нажать E (или тапнуть на телефоне).
+
+  ССЫЛКА НА ВЫХОДЕ: секрет VAULT_VIDEO, либо впиши прямо в EXIT_URL ниже.
 
   Разрешения (камера/микрофон/гео/уведомления) встроены в сюжет и служат
   ТОЛЬКО ДЛЯ ИСПУГА. Ничего не записывается и не отправляется — политика
-  сайта (connect-src 'self') это запрещает. Всё живёт в браузере зрителя.
+  сайта (по умолчанию connect-src 'self') это запрещает. Всё живёт в
+  браузере зрителя.
 -->
 <html lang="ru">
 <head>
@@ -26,11 +39,32 @@
     text-shadow:0 0 12px #000,0 0 26px rgba(176,20,20,.7);padding:0 20px;}
   #whisper.red{color:#e66;}
 
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:4;}
+  #loc{position:fixed;top:14px;left:16px;font-size:11px;letter-spacing:.28em;
+    text-transform:uppercase;color:#c9c9c9;opacity:0;transition:opacity .8s;
+    text-shadow:0 0 10px #000;}
+  #loc.show{opacity:.85;}
+
+  #pulseWrap{position:fixed;top:14px;right:16px;width:120px;text-align:right;}
+  #pulseLabel{font-size:9px;letter-spacing:.22em;color:#8a8a8a;margin-bottom:4px;text-transform:uppercase;}
+  #pulseBar{width:100%;height:4px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);}
+  #pulseFill{height:100%;width:0%;background:#8a2020;transition:width .6s linear, background .6s linear;}
+
   #cam{position:fixed;right:12px;bottom:12px;width:120px;height:90px;
     object-fit:cover;filter:grayscale(1) contrast(1.3) brightness(.7);
     border:1px solid rgba(176,20,20,.5);display:none;opacity:.75;
     animation:flick 3s steps(2) infinite;z-index:4;}
   @keyframes flick{0%,100%{opacity:.7;}50%{opacity:.85;}}
+
+  #crosshair{position:fixed;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;
+    border-radius:50%;background:rgba(200,200,200,.5);z-index:4;}
+
+  #interact{position:fixed;left:50%;bottom:30%;transform:translateX(-50%);
+    font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#e66;
+    text-shadow:0 0 10px #000;opacity:0;transition:opacity .3s;white-space:nowrap;z-index:4;}
+  #interact.show{opacity:1;animation:glowtxt 1.4s ease-in-out infinite;}
+  @keyframes glowtxt{0%,100%{opacity:.7;}50%{opacity:1;}}
 
   /* интро / финал */
   .screen{position:fixed;inset:0;display:flex;flex-direction:column;
@@ -45,14 +79,14 @@
     animation:glow 2s ease-in-out infinite;}
   @keyframes glow{0%,100%{box-shadow:0 0 0 rgba(176,20,20,0);}50%{box-shadow:0 0 24px rgba(176,20,20,.5);}}
   .btn:hover{color:#fff;}
-  #end{display:none;}
 
   /* сенсорные кнопки */
-  #pad{position:fixed;left:0;right:0;bottom:0;display:none;justify-content:center;gap:12px;
+  #pad{position:fixed;left:0;right:0;bottom:0;display:none;justify-content:center;align-items:flex-end;gap:10px;
     padding:14px;z-index:5;}
-  #pad button{width:74px;height:60px;background:rgba(10,10,10,.6);color:#c9c9c9;
-    border:1px solid rgba(255,255,255,.12);border-radius:6px;font-size:22px;
+  #pad button{width:68px;height:56px;background:rgba(10,10,10,.6);color:#c9c9c9;
+    border:1px solid rgba(255,255,255,.12);border-radius:6px;font-size:20px;
     -webkit-user-select:none;user-select:none;touch-action:none;}
+  #pad button[data-k="act"]{background:rgba(90,20,20,.5);border-color:rgba(230,102,102,.5);font-size:11px;letter-spacing:.1em;}
   @media (pointer:coarse){ #pad{display:flex;} }
 </style>
 </head>
@@ -61,45 +95,205 @@
   <img id="cam" alt="">
   <div id="whisper" class="layer"></div>
 
+  <div id="hud">
+    <div id="loc"></div>
+    <div id="pulseWrap">
+      <div id="pulseLabel">пульс</div>
+      <div id="pulseBar"><div id="pulseFill"></div></div>
+    </div>
+    <div id="crosshair"></div>
+    <div id="interact">[ E ] открыть</div>
+  </div>
+
   <div id="pad">
     <button data-k="left">◄</button>
     <button data-k="fwd">▲</button>
     <button data-k="back">▼</button>
     <button data-k="right">►</button>
+    <button data-k="act">E</button>
   </div>
 
   <div class="screen" id="intro">
     <h1>Ты внутри</h1>
     <p>{{TEXT}}</p>
-    <p>найди выход.<br><span class="kbd">W A S D</span> или стрелки — идти и поворачивать.<br>на телефоне — кнопки снизу.</p>
-    <button class="btn" id="startBtn">войти в лабиринт</button>
-  </div>
-
-  <div class="screen" id="end">
-    <h1>Выход</h1>
-    <p>ты дошёл. но выход — это только начало.</p>
-    <a class="btn" id="exitBtn" target="_blank" rel="noopener noreferrer">открыть</a>
+    <p>дом больше, чем кажется снаружи. найди дверь.<br>
+       <span class="kbd">W A S D</span> или стрелки — идти и поворачивать,
+       <span class="kbd">E</span> — трогать то, что светится.<br>
+       на телефоне — кнопки снизу.</p>
+    <button class="btn" id="startBtn">войти в дом</button>
   </div>
 
 <script>
-/* ============ данные лабиринта (сгенерированы заранее) ============ */
-const MAP = ["###################", "#.....#...........#", "#####.#.###.#######", "#...#.#...#.......#", "###.#.###.#######.#", "#...#...#.....#.#.#", "#.#.###.#####.#.#.#", "#.#...#.....#...#.#", "#.#########.###.#.#", "#.#...#.....#...#.#", "#.#.#.#.#########.#", "#...#.#.#.........#", "#.###.#.#.#######.#", "#...#.....#.......#", "###################"];
-const W = MAP[0].length, H = MAP.length;
-let px = 1.5, py = 1.5;
-let ang = 0.00000;
-let dirX = Math.cos(ang), dirY = Math.sin(ang);
-const FOV = 0.66;
-let planeX = -dirY * FOV, planeY = dirX * FOV;
-const EXIT = {x: 17.5, y: 13.5};
-const START_DIST = 20.0000;
-const TRIGGERS = [{"x": 5.5, "y": 5.5, "type": "camera"}, {"x": 11.5, "y": 8.5, "type": "mic"}, {"x": 7.5, "y": 13.5, "type": "geo"}, {"x": 13.5, "y": 11.5, "type": "notify"}].map(t => Object.assign({fired:false}, t));
+/* ============================================================
+   1. ГЕНЕРАЦИЯ ДОМА (детерминированная — один и тот же сид)
+   ============================================================ */
+function mulberry32(seed){
+  return function(){
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const SEED = 133742;
+const rnd = mulberry32(SEED);
+
+const COLS = 21, ROWS = 17;           // клетки лабиринта
+const W = COLS*2+1, H = ROWS*2+1;      // клетки карты (43×35)
+
+function genMaze(){
+  const grid = Array.from({length:H}, () => Array(W).fill('#'));
+  const visited = Array.from({length:ROWS}, () => Array(COLS).fill(false));
+  const stack = [[0,0]];
+  visited[0][0] = true; grid[1][1] = '.';
+  while(stack.length){
+    const [cx,cy] = stack[stack.length-1];
+    const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
+    for(let i=dirs.length-1;i>0;i--){ const j=(rnd()*(i+1))|0; [dirs[i],dirs[j]]=[dirs[j],dirs[i]]; }
+    let carved = false;
+    for(const [dx,dy] of dirs){
+      const nx=cx+dx, ny=cy+dy;
+      if(nx>=0 && ny>=0 && nx<COLS && ny<ROWS && !visited[ny][nx]){
+        visited[ny][nx]=true;
+        grid[cy*2+1+dy][cx*2+1+dx]='.';
+        grid[ny*2+1][nx*2+1]='.';
+        stack.push([nx,ny]); carved=true; break;
+      }
+    }
+    if(!carved) stack.pop();
+  }
+  return grid;
+}
+const GRID = genMaze();
+
+/* 20 комнат, равномерной сеткой 5×4 по всему дому */
+const ROOM_NAMES = [
+  'прихожая','гостиная','столовая','кухня','кладовая',
+  'спальня','детская','ванная','кабинет','библиотека',
+  'музыкальная комната','зимний сад','чулан','лестничная площадка','мансарда',
+  'гардеробная','молельня','оранжерея','зеркальный зал','дверь'
+];
+const anchors = [];
+for(let j=0;j<4;j++) for(let i=0;i<5;i++){
+  const cx = Math.round((i+0.5)*(COLS/5)), cy = Math.round((j+0.5)*(ROWS/4));
+  anchors.push({cx,cy, tx:cx*2+1, ty:cy*2+1});
+}
+function carveRoom(a){
+  const {tx,ty}=a;
+  GRID[ty][tx]='.'; GRID[ty-1][tx]='.'; GRID[ty+1][tx]='.'; GRID[ty][tx-1]='.'; GRID[ty][tx+1]='.';
+}
+anchors.forEach(carveRoom);
+
+/* мебель по углам комнат — просто раскрашенные препятствия */
+const FURN = {
+  0:[],
+  1:[['S',-1,-1],['S',1,1]],   2:[['S',-1,-1],['S',1,1]],   3:[['S',-1,-1],['W',1,1]],
+  4:[['W',-1,-1],['W',1,1]],   5:[['B',-1,-1],['W',1,1]],   6:[['K',-1,-1],['K',1,1]],
+  7:[['M',-1,-1],['W',1,1]],   8:[['D',-1,-1],['D',1,1]],   9:[['D',-1,-1],['W',1,1]],
+  10:[['N',-1,-1],['W',1,1]],  11:[['P',-1,-1],['P',1,1]],  12:[['W',-1,-1]],
+  13:[],                       14:[['W',-1,-1],['W',1,1]],  15:[['W',-1,-1],['M',1,1]],
+  16:[['C',-1,-1],['C',1,1]],  17:[['P',-1,-1],['P',1,1]],  18:[['M',-1,-1],['M',1,1]],  19:[]
+};
+anchors.forEach((a,i)=>{
+  (FURN[i]||[]).forEach(([ch,ox,oy])=>{
+    const x=a.tx+ox, y=a.ty+oy;
+    if(GRID[y] && GRID[y][x]==='.') GRID[y][x]=ch;
+  });
+});
+
+/* длинный «невозможный» коридор через весь дом */
+const CORR_Y = 17, CORR_X0 = 3, CORR_X1 = 39;
+for(let x=CORR_X0; x<=CORR_X1; x++) GRID[CORR_Y][x]='.';
+
+/* дверь наружу — светящаяся панель в стене за финальной комнатой */
+const EXIT_ROOM = anchors[19];                              // «дверь»
+const EXIT_PANEL = {x:EXIT_ROOM.tx, y:EXIT_ROOM.ty-2};       // клетка стены
+GRID[EXIT_PANEL.y][EXIT_PANEL.x]='X';
+if(GRID[EXIT_PANEL.y][EXIT_PANEL.x-1]==='#') GRID[EXIT_PANEL.y][EXIT_PANEL.x-1]='C';
+if(GRID[EXIT_PANEL.y][EXIT_PANEL.x+1]==='#') GRID[EXIT_PANEL.y][EXIT_PANEL.x+1]='C';
+const EXIT = {x:EXIT_ROOM.tx+0.5, y:EXIT_ROOM.ty-1+0.5};     // точка, откуда открывается
+
+const START = {x:anchors[0].tx+0.5, y:anchors[0].ty+0.5};
+const START_DIST = Math.hypot(EXIT.x-START.x, EXIT.y-START.y);
+
+/* координаты «пугающих» разрешений — привязаны к комнатам по смыслу */
+const TRIGGERS = [
+  {x:anchors[18].tx+0.5, y:anchors[18].ty+0.5, type:'camera'},  // зеркальный зал
+  {x:anchors[12].tx+0.5, y:anchors[12].ty+0.5, type:'mic'},     // чулан
+  {x:anchors[16].tx+0.5, y:anchors[16].ty+0.5, type:'geo'},     // молельня
+  {x:anchors[10].tx+0.5, y:anchors[10].ty+0.5, type:'notify'},  // музыкальная комната
+].map(t => Object.assign({fired:false}, t));
+
+/* точки двух сюжетных веток — какая комната встретится первой */
+const BRANCH_ROOMS = {1:'тихо', 5:'спешишь'};
+let pathChoice = null;
 
 /* ссылка выхода: секрет VAULT_VIDEO или впиши вручную */
 let EXIT_URL = "";
 const FROM_SECRET = "{{VIDEO_URL}}";
 if (FROM_SECRET && FROM_SECRET.indexOf("{{") !== 0) EXIT_URL = FROM_SECRET;
 
-/* ============ канвас ============ */
+/* ============================================================
+   2. КАРТА: доступ к клеткам, раскраска мебели
+   ============================================================ */
+function cell(x,y){
+  const xi=x|0, yi=y|0;
+  if(xi<0||yi<0||xi>=W||yi>=H) return '#';
+  return GRID[yi][xi] || '#';
+}
+function wall(x,y){ return cell(x,y) !== '.'; }
+function canGo(x,y){ const r=0.22;
+  return !wall(x-r,y-r)&&!wall(x+r,y-r)&&!wall(x-r,y+r)&&!wall(x+r,y+r); }
+
+const TINT = {
+  'S':[120,74,42], 'B':[92,24,28], 'W':[54,42,32], 'K':[68,80,92],
+  'D':[46,56,36],  'N':[26,22,22], 'P':[30,56,36], 'C':[132,92,32],
+  'M':[150,172,192]
+};
+
+/* ============================================================
+   3. ИГРОК И КАМЕРА
+   ============================================================ */
+let px = START.x, py = START.y;
+let ang = 0.0;
+let dirX = Math.cos(ang), dirY = Math.sin(ang);
+const FOV = 0.66;
+let planeX = -dirY*FOV, planeY = dirX*FOV;
+
+function move(dx,dy){ if(canGo(px+dx,py)) px+=dx; if(canGo(px,py+dy)) py+=dy; }
+function rot(a){ const c=Math.cos(a), s=Math.sin(a);
+  let x=dirX*c-dirY*s, y=dirX*s+dirY*c; dirX=x; dirY=y;
+  let px2=planeX*c-planeY*s, py2=planeX*s+planeY*c; planeX=px2; planeY=py2; }
+
+/* ============================================================
+   4. ВВОД
+   ============================================================ */
+const K = {fwd:false,back:false,left:false,right:false};
+const KEYMAP = {KeyW:'fwd',ArrowUp:'fwd',KeyS:'back',ArrowDown:'back',
+             KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right'};
+addEventListener('keydown', e=>{
+  if(KEYMAP[e.code]){ K[KEYMAP[e.code]]=true; e.preventDefault(); }
+  if(e.code==='KeyE' || e.code==='Space'){ interact(); e.preventDefault(); }
+});
+addEventListener('keyup', e=>{ if(KEYMAP[e.code]) K[KEYMAP[e.code]]=false; });
+document.querySelectorAll('#pad button').forEach(b=>{
+  const k=b.dataset.k;
+  if(k==='act'){ b.addEventListener('pointerdown', e=>{ e.preventDefault(); interact(); }); return; }
+  const on =e=>{e.preventDefault();K[k]=true;};
+  const off=e=>{e.preventDefault();K[k]=false;};
+  b.addEventListener('pointerdown',on); b.addEventListener('pointerup',off);
+  b.addEventListener('pointerleave',off); b.addEventListener('pointercancel',off);
+});
+cv_click_setup();
+function cv_click_setup(){
+  const cv = document.getElementById('view');
+  cv.addEventListener('click', ()=>{ if(cv.requestPointerLock) cv.requestPointerLock(); });
+  addEventListener('mousemove', e=>{ if(document.pointerLockElement===cv) rot(e.movementX*0.0025); });
+}
+
+/* ============================================================
+   5. РЕНДЕР
+   ============================================================ */
 const cv = document.getElementById('view');
 const ctx = cv.getContext('2d', {alpha:false});
 let CW, CH;
@@ -109,38 +303,17 @@ function resize(){
 }
 addEventListener('resize', resize);
 
-/* ============ карта ============ */
-function cell(x,y){ if(x<0||y<0||x>=W||y>=H) return '#'; return MAP[y|0][x|0]; }
-function wall(x,y){ return cell(x,y) === '#'; }
-function canGo(x,y){ const r=0.22;
-  return !wall(x-r,y-r)&&!wall(x+r,y-r)&&!wall(x-r,y+r)&&!wall(x+r,y+r); }
-function move(dx,dy){ if(canGo(px+dx,py)) px+=dx; if(canGo(px,py+dy)) py+=dy; }
-function rot(a){ const c=Math.cos(a),s=Math.sin(a);
-  let x=dirX*c-dirY*s, y=dirX*s+dirY*c; dirX=x; dirY=y;
-  let px2=planeX*c-planeY*s, py2=planeX*s+planeY*c; planeX=px2; planeY=py2; }
-
-/* ============ ввод ============ */
-const K = {fwd:false,back:false,left:false,right:false};
-const map = {KeyW:'fwd',ArrowUp:'fwd',KeyS:'back',ArrowDown:'back',
-             KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right'};
-addEventListener('keydown', e=>{ if(map[e.code]){K[map[e.code]]=true; e.preventDefault();} });
-addEventListener('keyup',   e=>{ if(map[e.code]){K[map[e.code]]=false;} });
-document.querySelectorAll('#pad button').forEach(b=>{
-  const k=b.dataset.k;
-  const on =e=>{e.preventDefault();K[k]=true;};
-  const off=e=>{e.preventDefault();K[k]=false;};
-  b.addEventListener('pointerdown',on); b.addEventListener('pointerup',off);
-  b.addEventListener('pointerleave',off); b.addEventListener('pointercancel',off);
-});
-/* мышь (если браузер даст захват) */
-cv.addEventListener('click', ()=>{ if(cv.requestPointerLock) cv.requestPointerLock(); });
-addEventListener('mousemove', e=>{ if(document.pointerLockElement===cv) rot(e.movementX*0.0025); });
-
-/* ============ рендер ============ */
 const STEP = 2;
+let zbuf = [];
+
 function render(){
+  if(performance.now() < blackoutUntil){
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,CW,CH);
+    return;
+  }
   ctx.fillStyle='#000'; ctx.fillRect(0,0,CW,CH/2);
   ctx.fillStyle='#080808'; ctx.fillRect(0,CH/2,CW,CH/2);
+  zbuf = new Array(CW).fill(1e9);
   for(let x=0; x<CW; x+=STEP){
     const camX = 2*x/CW - 1;
     const rdx = dirX + planeX*camX, rdy = dirY + planeY*camX;
@@ -149,31 +322,68 @@ function render(){
     let sx, sy, stepX, stepY;
     if(rdx<0){stepX=-1; sx=(px-mx)*ddx;} else {stepX=1; sx=(mx+1-px)*ddx;}
     if(rdy<0){stepY=-1; sy=(py-my)*ddy;} else {stepY=1; sy=(my+1-py)*ddy;}
-    let side=0, guard=0;
-    while(guard++<64){
+    let side=0, guard=0, ch='#';
+    while(guard++<160){
       if(sx<sy){ sx+=ddx; mx+=stepX; side=0; } else { sy+=ddy; my+=stepY; side=1; }
-      if(cell(mx,my)==='#') break;
+      ch = cell(mx,my);
+      if(ch!=='.') break;
     }
     let dist = side===0 ? (sx-ddx) : (sy-ddy);
     if(dist<0.0001) dist=0.0001;
+    for(let s=0;s<STEP;s++){ if(x+s<CW) zbuf[x+s]=dist; }
     const lh = CH/dist;
     const y0 = (CH-lh)/2;
-    let sh = Math.max(0, 1 - dist/11);
-    let c = Math.floor(sh*255);
-    if(side===1) c = Math.floor(c*0.6);
-    ctx.fillStyle = 'rgb('+c+','+c+','+c+')';
+    let sh = Math.max(0, 1 - dist/13);
+
+    if(ch==='X'){
+      const pulse = 0.55 + 0.45*Math.sin(performance.now()/220);
+      const c = Math.floor(150 + 90*pulse);
+      ctx.fillStyle = 'rgb('+c+',30,30)';
+    } else if(TINT[ch]){
+      let [r,g,b] = TINT[ch];
+      if(side===1){ r*=0.6; g*=0.6; b*=0.6; }
+      ctx.fillStyle = 'rgb('+Math.floor(r*sh)+','+Math.floor(g*sh)+','+Math.floor(b*sh)+')';
+    } else {
+      let c = Math.floor(sh*255);
+      if(side===1) c = Math.floor(c*0.6);
+      ctx.fillStyle = 'rgb('+c+','+c+','+c+')';
+    }
     ctx.fillRect(x, y0, STEP, lh);
   }
+  drawSprites();
   vignette();
 }
 
-/* ============ нагнетание ============ */
-let dread = 0;
-function updateDread(){
-  const d = Math.hypot(EXIT.x-px, EXIT.y-py);
-  const t = 1 - Math.min(1, d/START_DIST);
-  dread += (t - dread) * 0.04;
+/* силуэт — простая тёмная фигура, никаких реалистичных изображений */
+function drawSprites(){
+  if(!figure.visible) return;
+  const spriteX = figure.x-px, spriteY = figure.y-py;
+  const invDet = 1.0/(planeX*dirY - dirX*planeY);
+  const transformX = invDet*(dirY*spriteX - dirX*spriteY);
+  const transformY = invDet*(-planeY*spriteX + planeX*spriteY);
+  if(transformY <= 0.2) return;
+  const screenX = Math.floor((CW/2)*(1+transformX/transformY));
+  const height = Math.min(CH*2, Math.abs(Math.floor(CH/transformY)));
+  const width = height*0.42;
+  const y0 = Math.max(0, -height/2 + CH/2);
+  const y1 = Math.min(CH, height/2 + CH/2);
+  const x0 = Math.floor(-width/2 + screenX);
+  const x1 = Math.floor(width/2 + screenX);
+  for(let x=x0; x<x1; x+=STEP){
+    if(x<0||x>=CW) continue;
+    if(transformY >= zbuf[x]) continue;
+    ctx.fillStyle = 'rgba(8,6,6,0.92)';
+    ctx.fillRect(x, y0, STEP, y1-y0);
+  }
+  if(transformY < zbuf[Math.max(0,Math.min(CW-1,screenX))]){
+    const eyeY = y0 + (y1-y0)*0.22;
+    const eyeDX = width*0.14;
+    ctx.fillStyle = 'rgba(200,40,40,.85)';
+    ctx.fillRect(screenX-eyeDX-1, eyeY, 2, 2);
+    ctx.fillRect(screenX+eyeDX-1, eyeY, 2, 2);
+  }
 }
+
 let shake = 0;
 function vignette(){
   let ox=0, oy=0;
@@ -186,7 +396,44 @@ function vignette(){
   ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
 }
 
-/* ============ звук: сердце + гул ============ */
+/* ============================================================
+   6. НАГНЕТАНИЕ / HUD
+   ============================================================ */
+let dread = 0;
+function updateDread(){
+  const d = Math.hypot(EXIT.x-px, EXIT.y-py);
+  const t = 1 - Math.min(1, d/START_DIST);
+  dread += (t - dread) * 0.04;
+  const fill = document.getElementById('pulseFill');
+  fill.style.width = Math.round(dread*100)+'%';
+  fill.style.background = dread>0.6 ? '#c93030' : '#8a2020';
+}
+
+const locEl = document.getElementById('loc');
+let lastRoom = -1, locTimer = null;
+function checkRoom(){
+  let nearest = -1, best = 1.6;
+  for(let i=0;i<anchors.length;i++){
+    const a = anchors[i];
+    const d = Math.hypot(a.tx+0.5-px, a.ty+0.5-py);
+    if(d<best){ best=d; nearest=i; }
+  }
+  if(nearest>=0 && nearest!==lastRoom){
+    lastRoom = nearest;
+    locEl.textContent = ROOM_NAMES[nearest];
+    locEl.classList.add('show');
+    clearTimeout(locTimer);
+    locTimer = setTimeout(()=>locEl.classList.remove('show'), 2600);
+    if(BRANCH_ROOMS[nearest] && !pathChoice){
+      pathChoice = BRANCH_ROOMS[nearest];
+      say(pathChoice==='тихо' ? 'ты идёшь тихо. это тоже слышно.' : 'ты спешишь. так быстрее не выйдет.', true);
+    }
+  }
+}
+
+/* ============================================================
+   7. ЗВУК
+   ============================================================ */
 let actx=null;
 function initAudio(){
   try{
@@ -206,14 +453,26 @@ function thump(){
   g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime+0.3);
   o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+0.32);
 }
+function creak(){
+  if(!actx) return;
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type='sawtooth'; o.frequency.setValueAtTime(70, actx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(20, actx.currentTime+0.9);
+  g.gain.setValueAtTime(0.0001, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.12, actx.currentTime+0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime+0.9);
+  o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+0.95);
+}
 function heartbeat(){
-  if(!running){ return; }
+  if(!running) return;
   thump(); setTimeout(thump, 190);
   const interval = 1150 - dread*760;
   setTimeout(heartbeat, Math.max(360, interval));
 }
 
-/* ============ сообщения ============ */
+/* ============================================================
+   8. СООБЩЕНИЯ
+   ============================================================ */
 const wEl = document.getElementById('whisper');
 let queue=[], busy=false;
 function say(text, red){ return new Promise(res=>{ queue.push({text,red,res}); pump(); }); }
@@ -230,7 +489,9 @@ async function pump(){
 }
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-/* ============ триггеры-разрешения (только испуг) ============ */
+/* ============================================================
+   9. РАЗРЕШЕНИЯ БРАУЗЕРА — только испуг, ничего никуда не уходит
+   ============================================================ */
 async function fireTrigger(type){
   if(type==='camera'){
     await say('дай посмотреть на тебя.');
@@ -281,7 +542,101 @@ function checkTriggers(){
   }
 }
 
-/* ============ цикл ============ */
+/* ============================================================
+   10. ПЯТЬ СОБЫТИЙ
+   ============================================================ */
+
+/* 10.1 затемнение */
+let blackoutUntil = 0, blackoutFired = false;
+function maybeBlackout(){
+  if(!blackoutFired && dread>=0.4){
+    blackoutFired = true;
+    blackoutUntil = performance.now()+1100;
+    thump(); setTimeout(thump,150); setTimeout(thump,300);
+    say('не смотри.', true);
+  }
+}
+
+/* 10.2 силуэт в конце коридора */
+const figure = {x:0,y:0,visible:false,until:0};
+let figureFired = false;
+function maybeFigure(){
+  if(!figureFired && dread>=0.6){
+    figureFired = true;
+    for(const dist of [5,4,3,2]){
+      const sx=px+dirX*dist, sy=py+dirY*dist;
+      if(!wall(sx,sy)){ figure.x=sx; figure.y=sy; figure.visible=true; figure.until=performance.now()+2600; break; }
+    }
+    if(figure.visible) say('не оборачивайся.', true);
+  }
+  if(figure.visible && performance.now()>figure.until) figure.visible=false;
+}
+
+/* 10.3 путь позади заваливается — один раз, только вход в дом */
+let sealed = false;
+function maybeSeal(){
+  if(!sealed && Math.hypot(px-START.x, py-START.y) > 4){
+    sealed = true;
+    const sx = anchors[0].tx, sy = anchors[0].ty-1;
+    if(GRID[sy][sx]==='.') GRID[sy][sx]='#';
+    creak();
+    say('то, что было позади, больше не пройти.', true);
+  }
+}
+
+/* 10.4 «бесконечный» коридор */
+const LOOP = {active:true, loopsLeft:3, inBand:false, originX:0};
+function maybeLoop(){
+  const inBand = Math.abs(py-(CORR_Y+0.5)) < 0.4 && px>CORR_X0 && px<CORR_X1;
+  if(inBand && !LOOP.inBand){ LOOP.inBand=true; LOOP.originX=px; }
+  if(!inBand){ LOOP.inBand=false; return; }
+  if(!LOOP.active) return;
+  const traveled = px - LOOP.originX;
+  if(Math.abs(traveled) > 6){
+    px = LOOP.originX + Math.sign(traveled)*0.6;
+    LOOP.originX = px;
+    LOOP.loopsLeft--;
+    shake = 0.7; thump();
+    if(LOOP.loopsLeft>0){ say('этот коридор длиннее, чем должен быть.', true); }
+    else { LOOP.active=false; say('...наконец.', true); }
+  }
+}
+
+/* 10.5 обратный отсчёт шёпотом, по мере приближения к двери */
+const COUNTDOWN = [
+  {t:0.50, msg:'ты близко.', fired:false},
+  {t:0.65, msg:'совсем рядом.', fired:false},
+  {t:0.80, msg:'я тоже.', fired:false},
+  {t:0.92, msg:'обернись.', fired:false},
+];
+function maybeCountdown(){
+  for(const c of COUNTDOWN){ if(!c.fired && dread>=c.t){ c.fired=true; say(c.msg, true); } }
+}
+
+/* ============================================================
+   11. ВЫХОД — физический объект, не всплывающее окно
+   ============================================================ */
+let lastInteract = 0;
+function nearExit(){ return Math.hypot(EXIT.x-px, EXIT.y-py) < 1.35; }
+function interact(){
+  if(!nearExit()) return;
+  const now = performance.now();
+  if(now-lastInteract < 1200) return;
+  lastInteract = now;
+  if(EXIT_URL){
+    window.open(EXIT_URL, '_blank', 'noopener,noreferrer');
+    const line = pathChoice==='тихо' ? 'тихие уходят дальше всех.'
+               : pathChoice==='спешишь' ? 'спешащие никуда не уходят.'
+               : 'дверь открыта.';
+    say(line, true);
+  } else {
+    say('тут нечего открыть.', true);
+  }
+}
+
+/* ============================================================
+   12. ЦИКЛ
+   ============================================================ */
 let running=false, last=0;
 function loop(ts){
   if(!running) return;
@@ -291,17 +646,11 @@ function loop(ts){
   if(K.back) move(-dirX*spd, -dirY*spd);
   if(K.left) rot(-r);
   if(K.right) rot(r);
-  updateDread(); checkTriggers(); render();
-  if(Math.hypot(EXIT.x-px, EXIT.y-py) < 0.6){ finish(); return; }
+  updateDread(); checkTriggers(); checkRoom();
+  maybeBlackout(); maybeFigure(); maybeSeal(); maybeLoop(); maybeCountdown();
+  render();
+  document.getElementById('interact').classList.toggle('show', nearExit());
   requestAnimationFrame(loop);
-}
-
-function finish(){
-  running=false;
-  const a=document.getElementById('exitBtn');
-  if(EXIT_URL){ a.href=EXIT_URL; }
-  else { a.removeAttribute('href'); a.textContent='ссылка не задана'; a.style.cursor='default'; }
-  document.getElementById('end').style.display='flex';
 }
 
 document.getElementById('startBtn').addEventListener('click', function(){
