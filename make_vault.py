@@ -1,4 +1,79 @@
-<!DOCTYPE html>
+# -*- coding: utf-8 -*-
+"""Генерирует проходимый лабиринт и собирает vault.example.html с 3D-игрой."""
+import random, json
+from collections import deque
+
+SEED = 3
+random.seed(SEED)
+
+Wc, Hc = 9, 7                      # ячеек по ширине/высоте
+W, H = 2 * Wc + 1, 2 * Hc + 1
+grid = [['#'] * W for _ in range(H)]
+
+def carve(cx, cy):
+    grid[2 * cy + 1][2 * cx + 1] = '.'
+    dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    random.shuffle(dirs)
+    for dx, dy in dirs:
+        nx, ny = cx + dx, cy + dy
+        if 0 <= nx < Wc and 0 <= ny < Hc and grid[2 * ny + 1][2 * nx + 1] == '#':
+            grid[2 * cy + 1 + dy][2 * cx + 1 + dx] = '.'
+            carve(nx, ny)
+
+carve(0, 0)
+
+start = (1, 1)
+exit_tile = (2 * (Wc - 1) + 1, 2 * (Hc - 1) + 1)
+
+# BFS: путь от старта к выходу
+def bfs(src, dst):
+    q = deque([src]); prev = {src: None}
+    while q:
+        x, y = q.popleft()
+        if (x, y) == dst: break
+        for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
+            nx, ny = x+dx, y+dy
+            if 0 <= nx < W and 0 <= ny < H and grid[ny][nx] == '.' and (nx,ny) not in prev:
+                prev[(nx,ny)] = (x,y); q.append((nx,ny))
+    path = []; cur = dst
+    while cur is not None:
+        path.append(cur); cur = prev[cur]
+    return path[::-1]
+
+path = bfs(start, exit_tile)
+assert path[0] == start and path[-1] == exit_tile, "лабиринт непроходим!"
+
+# Триггеры на пути (без старта и выхода), 4 штуки
+types = ["camera", "mic", "geo", "notify"]
+fracs = [0.20, 0.42, 0.64, 0.84]
+triggers = []
+for t, f in zip(types, fracs):
+    idx = max(1, min(len(path) - 2, int(len(path) * f)))
+    x, y = path[idx]
+    triggers.append({"x": x + 0.5, "y": y + 0.5, "type": t})
+
+# Начальный угол — в сторону открытого соседа
+sx, sy = start
+if grid[sy][sx + 1] == '.': ang = 0.0
+elif grid[sy + 1][sx] == '.': ang = 1.5708
+elif grid[sy][sx - 1] == '.': ang = 3.14159
+else: ang = -1.5708
+
+start_dist = ((exit_tile[0] - sx) ** 2 + (exit_tile[1] - sy) ** 2) ** 0.5
+
+# --- визуальная проверка в консоль ---
+vis = [row[:] for row in grid]
+vis[sy][sx] = 'S'
+vis[exit_tile[1]][exit_tile[0]] = 'E'
+for i, t in enumerate(triggers):
+    vis[int(t["y"])][int(t["x"])] = str(i + 1)
+print("Лабиринт %dx%d, путь %d клеток, триггеров %d:" % (W, H, len(path), len(triggers)))
+print("\n".join("".join(r) for r in vis))
+
+MAP = ["".join(r) for r in grid]
+
+# ---------------------------------------------------------------- шаблон игры
+TPL = r'''<!DOCTYPE html>
 <!--
   ЗАКРЫТАЯ СТРАНИЦА — 3D-лабиринт (стиль Doom), открывается после входа.
 
@@ -70,7 +145,7 @@
 
   <div class="screen" id="intro">
     <h1>Ты внутри</h1>
-    <p>{{TEXT}}</p>
+    <p>__TEXT__</p>
     <p>найди выход.<br><span class="kbd">W A S D</span> или стрелки — идти и поворачивать.<br>на телефоне — кнопки снизу.</p>
     <button class="btn" id="startBtn">войти в лабиринт</button>
   </div>
@@ -83,20 +158,20 @@
 
 <script>
 /* ============ данные лабиринта (сгенерированы заранее) ============ */
-const MAP = ["###################", "#.....#...........#", "#####.#.###.#######", "#...#.#...#.......#", "###.#.###.#######.#", "#...#...#.....#.#.#", "#.#.###.#####.#.#.#", "#.#...#.....#...#.#", "#.#########.###.#.#", "#.#...#.....#...#.#", "#.#.#.#.#########.#", "#...#.#.#.........#", "#.###.#.#.#######.#", "#...#.....#.......#", "###################"];
+const MAP = __MAP__;
 const W = MAP[0].length, H = MAP.length;
-let px = 1.5, py = 1.5;
-let ang = 0.00000;
+let px = __SX__, py = __SY__;
+let ang = __ANG__;
 let dirX = Math.cos(ang), dirY = Math.sin(ang);
 const FOV = 0.66;
 let planeX = -dirY * FOV, planeY = dirX * FOV;
-const EXIT = {x: 17.5, y: 13.5};
-const START_DIST = 20.0000;
-const TRIGGERS = [{"x": 5.5, "y": 5.5, "type": "camera"}, {"x": 11.5, "y": 8.5, "type": "mic"}, {"x": 7.5, "y": 13.5, "type": "geo"}, {"x": 13.5, "y": 11.5, "type": "notify"}].map(t => Object.assign({fired:false}, t));
+const EXIT = {x: __EX__, y: __EY__};
+const START_DIST = __SDIST__;
+const TRIGGERS = __TRIGGERS__.map(t => Object.assign({fired:false}, t));
 
 /* ссылка выхода: секрет VAULT_VIDEO или впиши вручную */
 let EXIT_URL = "";
-const FROM_SECRET = "{{VIDEO_URL}}";
+const FROM_SECRET = "__VIDEO_URL__";
 if (FROM_SECRET && FROM_SECRET.indexOf("{{") !== 0) EXIT_URL = FROM_SECRET;
 
 /* ============ канвас ============ */
@@ -319,3 +394,20 @@ resize();
 </script>
 </body>
 </html>
+'''
+
+out = (TPL
+       .replace("__MAP__", json.dumps(MAP, ensure_ascii=False))
+       .replace("__SX__", str(sx + 0.5))
+       .replace("__SY__", str(sy + 0.5))
+       .replace("__ANG__", "%.5f" % ang)
+       .replace("__EX__", str(exit_tile[0] + 0.5))
+       .replace("__EY__", str(exit_tile[1] + 0.5))
+       .replace("__SDIST__", "%.4f" % start_dist)
+       .replace("__TRIGGERS__", json.dumps(triggers, ensure_ascii=False))
+       .replace("__TEXT__", "{{TEXT}}")
+       .replace("__VIDEO_URL__", "{{VIDEO_URL}}"))
+
+with open("/home/claude/site/vault.example.html", "w", encoding="utf-8") as f:
+    f.write(out)
+print("\nvault.example.html собран:", len(out), "байт")

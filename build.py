@@ -68,6 +68,10 @@ def video_block(url):
     return (f'<a class="btn v-link" href="{watch}" target="_blank" '
             'rel="noopener noreferrer">Смотреть видео</a>')
 
+def watch_url(url):
+    vid = yt_id(url)
+    return f"https://www.youtube.com/watch?v={vid}" if vid else ""
+
 def build_vault_html():
     source = None
     local = ROOT / "vault.html"
@@ -90,6 +94,7 @@ def build_vault_html():
         # Подстановки, чтобы ссылка и текст могли оставаться секретами,
         # а вёрстка жила в файле.
         return (source.replace("{{VIDEO}}", video_block(VAULT_VIDEO))
+                      .replace("{{VIDEO_URL}}", watch_url(VAULT_VIDEO))
                       .replace("{{TEXT}}", esc(VAULT_TEXT)))
 
     print("Содержимое закрытого экрана: секреты VAULT_VIDEO / VAULT_TEXT")
